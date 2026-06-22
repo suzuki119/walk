@@ -18,8 +18,9 @@ function pickClip(names, keywords, fallbackIndex = 0) {
   return found ?? names[fallbackIndex] ?? null
 }
 
-function DragonModel() {
-  const group = useRef()
+function DragonModel({ groupRef }) {
+  const localRef = useRef()
+  const group = groupRef ?? localRef
   const { scene, animations } = useGLTF(DRAGON_URL)
   const { actions, names } = useAnimations(animations, group)
 
@@ -135,8 +136,9 @@ function DragonModel() {
 }
 
 // dragon.glb がまだ無い場合に表示する仮のドラゴン（箱）
-function PlaceholderDragon() {
-  const group = useRef()
+function PlaceholderDragon({ groupRef }) {
+  const localRef = useRef()
+  const group = groupRef ?? localRef
   const [, getKeys] = useKeyboardControls()
   const dir = useMemo(() => new THREE.Vector3(), [])
 
@@ -148,7 +150,7 @@ function PlaceholderDragon() {
     if (dir.lengthSq() > 0) {
       dir.normalize()
       g.position.addScaledVector(dir, (run ? RUN_SPEED : WALK_SPEED) * delta)
-      const targetYaw = Math.atan2(dir.x, dir.z)
+      const targetYaw = Math.atan2(dir.x, dir.z) + Math.PI
       const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetYaw)
       g.quaternion.slerp(q, Math.min(1, TURN_SPEED * delta))
     }
@@ -180,14 +182,18 @@ class ModelBoundary extends Component {
     )
   }
   render() {
-    return this.state.failed ? <PlaceholderDragon /> : this.props.children
+    return this.state.failed ? (
+      <PlaceholderDragon groupRef={this.props.groupRef} />
+    ) : (
+      this.props.children
+    )
   }
 }
 
-export default function Dragon() {
+export default function Dragon({ groupRef }) {
   return (
-    <ModelBoundary>
-      <DragonModel />
+    <ModelBoundary groupRef={groupRef}>
+      <DragonModel groupRef={groupRef} />
     </ModelBoundary>
   )
 }

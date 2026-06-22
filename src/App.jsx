@@ -1,7 +1,8 @@
 import { Canvas } from '@react-three/fiber'
-import { KeyboardControls, OrbitControls, Grid, Environment } from '@react-three/drei'
-import { Suspense } from 'react'
+import { KeyboardControls, Grid, Environment } from '@react-three/drei'
+import { Suspense, useRef } from 'react'
 import Dragon from './Dragon.jsx'
+import CameraRig from './CameraRig.jsx'
 
 // 押されたキーをアクション名にマッピング
 const keyMap = [
@@ -13,6 +14,8 @@ const keyMap = [
 ]
 
 export default function App() {
+  const dragonRef = useRef()
+
   return (
     <KeyboardControls map={keyMap}>
       <Canvas shadows camera={{ position: [6, 5, 8], fov: 50 }}>
@@ -24,9 +27,10 @@ export default function App() {
           shadow-mapSize={[2048, 2048]}
         />
         <Suspense fallback={null}>
-          <Dragon />
+          <Dragon groupRef={dragonRef} />
           <Environment preset="sunset" />
         </Suspense>
+        <CameraRig targetRef={dragonRef} />
 
         {/* 地面 */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -42,8 +46,6 @@ export default function App() {
           cellColor="#444"
           sectionColor="#666"
         />
-
-        <OrbitControls makeDefault />
       </Canvas>
     </KeyboardControls>
   )
