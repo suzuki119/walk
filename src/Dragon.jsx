@@ -4,7 +4,7 @@ import { useGLTF, useAnimations, useKeyboardControls } from '@react-three/drei'
 import * as THREE from 'three'
 
 // public/dragon.glb に置いたモデルを読み込みます
-const DRAGON_URL = '/dragon.glb'
+const DRAGON_URL = '/doragon.glb'
 
 const WALK_SPEED = 3 // 1秒あたりの移動量
 const RUN_SPEED = 6
@@ -34,29 +34,57 @@ function DragonModel() {
     return scene
   }, [scene])
 
+  // モデルの一番下が地面(y=0)に来るように、持ち上げる量を計算
+  // スキン付きメッシュはワールド行列を更新してから測らないと正しく出ない
+  const [yOffset, setYOffset] = useState(0)
+  useEffect(() => {
+    clonedScene.updateWorldMatrix(true, true)
+    const box = new THREE.Box3().setFromObject(clonedScene)
+    if (Number.isFinite(box.min.y)) {
+      setYOffset(-box.min.y)
+      console.log('モデル下端 y =', box.min.y, '→ 持ち上げ量 =', -box.min.y)
+    }
+  }, [clonedScene])
+
   // 利用可能なアニメーション名をコンソールに出す（名前確認用）
   useEffect(() => {
     console.log('利用可能なアニメーション:', names)
   }, [names])
 
-  const idleName = useMemo(() => pickClip(names, ['idle', 'stand', 'rest'], 0), [names])
-  const walkName = useMemo(() => pickClip(names, ['walk', 'run', 'move'], 0), [names])
+  // 待機モーションを探す。無ければ null（= 止まったらアニメを停止する）
+  const idleName = useMemo(() => {
+    const found = names.find((n) =>
+      ['idle', 'stand', 'rest', '待機'].some((k) => n.toLowerCase().includes(k.toLowerCase())),
+    )
+    return found ?? null
+  }, [names])
+  // 歩行モーション。それっぽい名前が無ければ最初のアニメを歩行として使う
+  const walkName = useMemo(
+    () => pickClip(names, ['walk', 'run', 'move', 'アクション', 'action'], 0),
+    [names],
+  )
 
-  const current = useRef('') // 今再生中のアクション名
+  const wasMoving = useRef(null) // 直前が移動中だったか
 
-  const fade = (name) => {
-    if (!name || current.current === name || !actions[name]) return
-    const prev = actions[current.current]
-    const next = actions[name]
-    next.reset().fadeIn(0.25).play()
-    if (prev) prev.fadeOut(0.25)
-    current.current = name
+  const startWalk = () => {
+    const a = actions[walkName]
+    if (a) {
+      a.paused = false
+      a.reset().fadeIn(0.2).play()
+    }
   }
-
-  useEffect(() => {
-    fade(idleName)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idleName, walkName])
+  const stopWalk = () => {
+    const a = actions[walkName]
+    if (!a) return
+    if (idleName && actions[idleName]) {
+      // 待機モーションがあれば切り替え
+      a.fadeOut(0.2)
+      actions[idleName].reset().fadeIn(0.2).play()
+    } else {
+      // 無ければ歩行を最初のフレームで停止
+      a.fadeOut(0.2)
+    }
+  }
 
   const [, getKeys] = useKeyboardControls()
   const dir = useMemo(() => new THREE.Vector3(), [])
@@ -75,21 +103,35 @@ function DragonModel() {
       const speed = (run ? RUN_SPEED : WALK_SPEED) * delta
       g.position.addScaledVector(dir, speed)
 
-      // 進行方向へ滑らかに回転
-      const targetYaw = Math.atan2(dir.x, dir.z)
+      // 進行方向へ滑らかに回転（このモデルは頭が -Z 向きなので 180°反転）
+      const targetYaw = Math.atan2(dir.x, dir.z) + Math.PI
       const q = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(0, 1, 0),
         targetYaw,
       )
       g.quaternion.slerp(q, Math.min(1, TURN_SPEED * delta))
 
-      fade(walkName)
-    } else {
-      fade(idleName)
+      // 走行時はアニメも速く再生
+      const a = actions[walkName]
+      if (a) a.timeScale = run ? 1.6 : 1
+    }
+
+    // 移動状態が変わった瞬間だけアニメを切り替える
+    if (moving !== wasMoving.current) {
+      if (moving) startWalk()
+      else stopWalk()
+      wasMoving.current = moving
     }
   })
 
-  return <primitive ref={group} object={clonedScene} dispose={null} />
+  return (
+    <group ref={group} dispose={null}>
+      {/* 持ち上げは外側のグループで行う（モデル自身は原点のまま＝計測がブレない） */}
+      <group position={[0, yOffset, 0]}>
+        <primitive object={clonedScene} />
+      </group>
+    </group>
+  )
 }
 
 // dragon.glb がまだ無い場合に表示する仮のドラゴン（箱）
