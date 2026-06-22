@@ -3,12 +3,16 @@ import { useFrame } from '@react-three/fiber'
 import { useGLTF, useAnimations, useKeyboardControls } from '@react-three/drei'
 import * as THREE from 'three'
 
-// public/dragon.glb に置いたモデルを読み込みます
-const DRAGON_URL = '/doragon.glb'
+// public/doragon.glb を読み込みます（公開先の base に合わせて解決）
+const DRAGON_URL = `${import.meta.env.BASE_URL}doragon.glb`
 
-const WALK_SPEED = 3 // 1秒あたりの移動量
+const WALK_SPEED = 3 // 仮ドラゴン用の基本速度（1秒あたりの移動量）
 const RUN_SPEED = 6
 const TURN_SPEED = 10 // 向きを変える速さ
+
+// モデルの大きさに対する移動速度の比率（本物のドラゴン用）
+const WALK_RATIO = 0.32 // 体の最大寸法に対する歩行速度
+const RUN_RATIO = 0.7 // 走行速度
 
 // アニメーション名の候補から、それっぽいものを探す
 function pickClip(names, keywords, fallbackIndex = 0) {
@@ -38,12 +42,22 @@ function DragonModel({ groupRef }) {
   // モデルの一番下が地面(y=0)に来るように、持ち上げる量を計算
   // スキン付きメッシュはワールド行列を更新してから測らないと正しく出ない
   const [yOffset, setYOffset] = useState(0)
+  // モデルサイズに合わせた移動速度（大きいモデルでもちゃんと進む）
+  const speed = useRef({ walk: WALK_SPEED, run: RUN_SPEED })
   useEffect(() => {
     clonedScene.updateWorldMatrix(true, true)
     const box = new THREE.Box3().setFromObject(clonedScene)
     if (Number.isFinite(box.min.y)) {
       setYOffset(-box.min.y)
-      console.log('モデル下端 y =', box.min.y, '→ 持ち上げ量 =', -box.min.y)
+      const size = box.getSize(new THREE.Vector3())
+      const maxDim = Math.max(size.x, size.z) || 1
+      speed.current = { walk: maxDim * WALK_RATIO, run: maxDim * RUN_RATIO }
+      console.log(
+        'モデル下端 y =', box.min.y,
+        '→ 持ち上げ量 =', -box.min.y,
+        '/ 歩行速度 =', speed.current.walk.toFixed(1),
+        '走行速度 =', speed.current.run.toFixed(1),
+      )
     }
   }, [clonedScene])
 
@@ -101,8 +115,8 @@ function DragonModel({ groupRef }) {
 
     if (moving) {
       dir.normalize()
-      const speed = (run ? RUN_SPEED : WALK_SPEED) * delta
-      g.position.addScaledVector(dir, speed)
+      const v = (run ? speed.current.run : speed.current.walk) * delta
+      g.position.addScaledVector(dir, v)
 
       // 進行方向へ滑らかに回転（このモデルは頭が -Z 向きなので 180°反転）
       const targetYaw = Math.atan2(dir.x, dir.z) + Math.PI
