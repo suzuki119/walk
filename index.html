@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dragon Walk</title>
+    <style>
+      html, body, #root { margin: 0; height: 100%; }
+      body { background: #1a1a2e; overflow: hidden; }
+      #hint {
+        position: fixed; left: 16px; bottom: 16px;
+        color: #fff; font-family: sans-serif; font-size: 14px;
+        background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 8px;
+        pointer-events: none; user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="hint">WASD / 矢印キー で移動・歩行</div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
