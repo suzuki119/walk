@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber'
-import { KeyboardControls, Grid, Environment } from '@react-three/drei'
+import { KeyboardControls, OrbitControls, Grid, Environment } from '@react-three/drei'
 import { Suspense, useRef } from 'react'
 import Dragon from './Dragon.jsx'
 import CameraRig from './CameraRig.jsx'
@@ -15,6 +15,7 @@ const keyMap = [
 
 export default function App() {
   const dragonRef = useRef()
+  const controlsRef = useRef()
 
   return (
     <KeyboardControls map={keyMap}>
@@ -30,7 +31,8 @@ export default function App() {
           <Dragon groupRef={dragonRef} />
           <Environment preset="sunset" />
         </Suspense>
-        <CameraRig targetRef={dragonRef} />
+        <OrbitControls ref={controlsRef} makeDefault enablePan={false} enableDamping />
+        <CameraRig targetRef={dragonRef} controlsRef={controlsRef} />
 
         {/* 地面 */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>

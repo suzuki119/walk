@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo, Component } from 'react'
+import { useRef, useMemo, useState, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useGLTF, useAnimations, useKeyboardControls } from '@react-three/drei'
 import * as THREE from 'three'
@@ -6,215 +6,80 @@ import * as THREE from 'three'
 // public/doragon.glb を読み込みます（公開先の base に合わせて解決）
 const DRAGON_URL = `${import.meta.env.BASE_URL}doragon.glb`
 
-const WALK_SPEED = 3 // 仮ドラゴン用の基本速度（1秒あたりの移動量）
-const RUN_SPEED = 6
-const TURN_SPEED = 10 // 向きを変える速さ
-
-// モデルの大きさに対する移動速度の比率（本物のドラゴン用）
 const WALK_RATIO = 0.32 // 体の最大寸法に対する歩行速度
 const RUN_RATIO = 0.7 // 走行速度
+const TURN_SPEED = 10 // 向きを変える速さ
+const UP = new THREE.Vector3(0, 1, 0)
 
-// アニメーション名の候補から、それっぽいものを探す
-function pickClip(names, keywords, fallbackIndex = 0) {
-  const found = names.find((n) =>
-    keywords.some((k) => n.toLowerCase().includes(k)),
-  )
-  return found ?? names[fallbackIndex] ?? null
-}
-
-function DragonModel({ groupRef }) {
+export default function Dragon({ groupRef }) {
   const localRef = useRef()
   const group = groupRef ?? localRef
   const { scene, animations } = useGLTF(DRAGON_URL)
   const { actions, names } = useAnimations(animations, group)
 
+  // このモデルはアニメが1個（歩行）なので最初のクリップを使う
+  const clip = names[0]
+
   // 影を有効化
-  const clonedScene = useMemo(() => {
+  useMemo(() => {
     scene.traverse((o) => {
-      if (o.isMesh) {
-        o.castShadow = true
-        o.receiveShadow = true
-      }
+      if (o.isMesh) o.castShadow = o.receiveShadow = true
     })
-    return scene
   }, [scene])
 
-  // モデルの一番下が地面(y=0)に来るように、持ち上げる量を計算
-  // スキン付きメッシュはワールド行列を更新してから測らないと正しく出ない
+  // モデルの最下点を地面(y=0)に合わせる量と、サイズ基準の移動速度を計算
   const [yOffset, setYOffset] = useState(0)
-  // モデルサイズに合わせた移動速度（大きいモデルでもちゃんと進む）
-  const speed = useRef({ walk: WALK_SPEED, run: RUN_SPEED })
+  const speed = useRef({ walk: 6, run: 12 })
   useEffect(() => {
-    clonedScene.updateWorldMatrix(true, true)
-    const box = new THREE.Box3().setFromObject(clonedScene)
-    if (Number.isFinite(box.min.y)) {
-      setYOffset(-box.min.y)
-      const size = box.getSize(new THREE.Vector3())
-      const maxDim = Math.max(size.x, size.z) || 1
-      speed.current = { walk: maxDim * WALK_RATIO, run: maxDim * RUN_RATIO }
-      console.log(
-        'モデル下端 y =', box.min.y,
-        '→ 持ち上げ量 =', -box.min.y,
-        '/ 歩行速度 =', speed.current.walk.toFixed(1),
-        '走行速度 =', speed.current.run.toFixed(1),
-      )
-    }
-  }, [clonedScene])
+    scene.updateWorldMatrix(true, true)
+    const box = new THREE.Box3().setFromObject(scene)
+    if (!Number.isFinite(box.min.y)) return
+    setYOffset(-box.min.y)
+    const size = box.getSize(new THREE.Vector3())
+    const m = Math.max(size.x, size.z) || 1
+    speed.current = { walk: m * WALK_RATIO, run: m * RUN_RATIO }
+  }, [scene])
 
-  // 利用可能なアニメーション名をコンソールに出す（名前確認用）
-  useEffect(() => {
-    console.log('利用可能なアニメーション:', names)
-  }, [names])
-
-  // 待機モーションを探す。無ければ null（= 止まったらアニメを停止する）
-  const idleName = useMemo(() => {
-    const found = names.find((n) =>
-      ['idle', 'stand', 'rest', '待機'].some((k) => n.toLowerCase().includes(k.toLowerCase())),
-    )
-    return found ?? null
-  }, [names])
-  // 歩行モーション。それっぽい名前が無ければ最初のアニメを歩行として使う
-  const walkName = useMemo(
-    () => pickClip(names, ['walk', 'run', 'move', 'アクション', 'action'], 0),
-    [names],
-  )
-
-  const wasMoving = useRef(null) // 直前が移動中だったか
-
-  const startWalk = () => {
-    const a = actions[walkName]
-    if (a) {
-      a.paused = false
-      a.reset().fadeIn(0.2).play()
-    }
-  }
-  const stopWalk = () => {
-    const a = actions[walkName]
-    if (!a) return
-    if (idleName && actions[idleName]) {
-      // 待機モーションがあれば切り替え
-      a.fadeOut(0.2)
-      actions[idleName].reset().fadeIn(0.2).play()
-    } else {
-      // 無ければ歩行を最初のフレームで停止
-      a.fadeOut(0.2)
-    }
-  }
-
+  const wasMoving = useRef(false)
   const [, getKeys] = useKeyboardControls()
   const dir = useMemo(() => new THREE.Vector3(), [])
+  const q = useMemo(() => new THREE.Quaternion(), [])
 
   useFrame((_, delta) => {
     const { forward, backward, left, right, run } = getKeys()
     const g = group.current
     if (!g) return
 
-    // 入力からワールド座標の移動方向を作る
     dir.set((right ? 1 : 0) - (left ? 1 : 0), 0, (backward ? 1 : 0) - (forward ? 1 : 0))
     const moving = dir.lengthSq() > 0
+    const a = actions[clip]
 
     if (moving) {
       dir.normalize()
-      const v = (run ? speed.current.run : speed.current.walk) * delta
-      g.position.addScaledVector(dir, v)
+      g.position.addScaledVector(dir, (run ? speed.current.run : speed.current.walk) * delta)
 
       // 進行方向へ滑らかに回転（このモデルは頭が -Z 向きなので 180°反転）
-      const targetYaw = Math.atan2(dir.x, dir.z) + Math.PI
-      const q = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0),
-        targetYaw,
-      )
+      q.setFromAxisAngle(UP, Math.atan2(dir.x, dir.z) + Math.PI)
       g.quaternion.slerp(q, Math.min(1, TURN_SPEED * delta))
 
-      // 走行時はアニメも速く再生
-      const a = actions[walkName]
-      if (a) a.timeScale = run ? 1.6 : 1
+      if (a) a.timeScale = run ? 1.6 : 1 // 走行時はアニメも速く
     }
 
-    // 移動状態が変わった瞬間だけアニメを切り替える
-    if (moving !== wasMoving.current) {
-      if (moving) startWalk()
-      else stopWalk()
+    // 移動状態が変わった瞬間だけ歩行アニメを再生/停止
+    if (a && moving !== wasMoving.current) {
+      moving ? a.reset().fadeIn(0.2).play() : a.fadeOut(0.2)
       wasMoving.current = moving
     }
   })
 
   return (
     <group ref={group} dispose={null}>
-      {/* 持ち上げは外側のグループで行う（モデル自身は原点のまま＝計測がブレない） */}
+      {/* 持ち上げは外側のグループで行う（モデルは原点のまま＝計測がブレない） */}
       <group position={[0, yOffset, 0]}>
-        <primitive object={clonedScene} />
+        <primitive object={scene} />
       </group>
     </group>
   )
 }
 
-// dragon.glb がまだ無い場合に表示する仮のドラゴン（箱）
-function PlaceholderDragon({ groupRef }) {
-  const localRef = useRef()
-  const group = groupRef ?? localRef
-  const [, getKeys] = useKeyboardControls()
-  const dir = useMemo(() => new THREE.Vector3(), [])
-
-  useFrame((_, delta) => {
-    const { forward, backward, left, right, run } = getKeys()
-    const g = group.current
-    if (!g) return
-    dir.set((right ? 1 : 0) - (left ? 1 : 0), 0, (backward ? 1 : 0) - (forward ? 1 : 0))
-    if (dir.lengthSq() > 0) {
-      dir.normalize()
-      g.position.addScaledVector(dir, (run ? RUN_SPEED : WALK_SPEED) * delta)
-      const targetYaw = Math.atan2(dir.x, dir.z) + Math.PI
-      const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), targetYaw)
-      g.quaternion.slerp(q, Math.min(1, TURN_SPEED * delta))
-    }
-  })
-
-  return (
-    <group ref={group} position={[0, 0.5, 0]}>
-      <mesh castShadow>
-        <boxGeometry args={[1, 1, 2]} />
-        <meshStandardMaterial color="#5fa86a" />
-      </mesh>
-      <mesh castShadow position={[0, 0.2, 1.1]}>
-        <boxGeometry args={[0.6, 0.6, 0.6]} />
-        <meshStandardMaterial color="#76c084" />
-      </mesh>
-    </group>
-  )
-}
-
-// glb の読み込みに失敗したら仮ドラゴンにフォールバック
-class ModelBoundary extends Component {
-  state = { failed: false }
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-  componentDidCatch() {
-    console.warn(
-      'dragon.glb が読み込めませんでした。public/dragon.glb を配置すると本物のモデルが表示されます。',
-    )
-  }
-  render() {
-    return this.state.failed ? (
-      <PlaceholderDragon groupRef={this.props.groupRef} />
-    ) : (
-      this.props.children
-    )
-  }
-}
-
-export default function Dragon({ groupRef }) {
-  return (
-    <ModelBoundary groupRef={groupRef}>
-      <DragonModel groupRef={groupRef} />
-    </ModelBoundary>
-  )
-}
-
-// 事前読み込み（ファイルがあれば）
-try {
-  useGLTF.preload(DRAGON_URL)
-} catch (e) {
-  // ignore
-}
+useGLTF.preload(DRAGON_URL)
