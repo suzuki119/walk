@@ -23,8 +23,8 @@ export default function CameraRig({ targetRef, controlsRef }) {
       const r = sphere.radius || 10
       const c = sphere.center
       controls.target.copy(c)
-      camera.position.set(c.x + r * 2.4, c.y + r * 1.2, c.z) // 横から
-      controls.minDistance = r * 5
+      camera.position.set(c.x + r * 3, c.y + r * 1.5, c.z) // 横から
+      controls.minDistance = r * 1.2
       controls.maxDistance = r * 20
       prev.copy(t.position)
       ready.current = true
