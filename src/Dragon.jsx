@@ -61,7 +61,7 @@ export default function Dragon({ groupRef }) {
       node.position.addScaledVector(dir, (run ? speed.current.run : speed.current.walk) * delta)
 
       // 進行方向へ滑らかに回転（このモデルは頭が -Z 向きなので 180°反転）
-      targetQuat.setFromAxisAngle(UP, Math.atan2(dir.x, dir.z) + Math.PI)
+      targetQuat.setFromAxisAngle(UP, Math.atan2(dir.x, dir.z))
       node.quaternion.slerp(targetQuat, Math.min(1, TURN_SPEED * delta))
 
       if (action) action.timeScale = run ? 1.6 : 1 // 走行時はアニメも速く
@@ -78,7 +78,7 @@ export default function Dragon({ groupRef }) {
     <group ref={group} dispose={null}>
       {/* 持ち上げは外側のグループで行う（モデルは原点のまま＝計測がブレない） */}
       {/* 初期姿勢を Z 軸まわりに 180°回転 */}
-      <group position={[0, yOffset, 0]} rotation={[Math.PI, Math.PI, Math.PI]}>
+      <group position={[0, yOffset, 0]} rotation={[0, Math.PI, 0]}>
         <primitive object={scene} />
       </group>
     </group>
